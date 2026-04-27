@@ -8,6 +8,7 @@ import json
 import requests
 import math
 from datetime import datetime as dt
+import hashlib
 
 app = Flask(__name__)
 app.config["SECRET_KEY"] = "logistics_secret_key_123_SUPER_LONG_ABC_987654321"
@@ -245,10 +246,12 @@ def login():
         identifier = data.get("identifier")
         password = data.get("password")
 
+        hashed_password = hashlib.sha256(password.encode()).hexdigest()
+
         if role == "customer":
             cursor.execute("SELECT * FROM CUSTOMER WHERE email=%s OR phone=%s", (identifier, identifier))
             user = cursor.fetchone()
-            if user and check_password_hash(user["password_hash"], password):
+            if user and user["password_hash"] == hashed_password:
                 token = generate_token(user["customer_id"], "customer")
                 return jsonify({"token": token, "customer_id": user["customer_id"], "name": user["name"]})
             return jsonify({"message": "Invalid credentials"}), 401
@@ -260,7 +263,7 @@ def login():
                 return jsonify({"message": "Driver not found"}), 401
             if not user.get("password_hash"):
                 return jsonify({"message": "Account not activated yet"}), 401
-            if check_password_hash(user["password_hash"], password):
+            if user["password_hash"] == hashed_password:
                 token = generate_token(user["driver_id"], "driver")
                 return jsonify({"token": token, "driver_id": user["driver_id"], "name": user["name"], "role": "driver"})
             return jsonify({"message": "Invalid credentials"}), 401
@@ -268,7 +271,7 @@ def login():
         elif role == "admin":
             cursor.execute("SELECT * FROM ADMIN WHERE email=%s OR phone=%s", (identifier, identifier))
             user = cursor.fetchone()
-            if user and user["password_hash"] == password:
+            if user and user["password_hash"] == hashed_password:
                 token = generate_token(user["admin_id"], "admin")
                 return jsonify({"token": token, "admin_id": user["admin_id"], "name": user["name"], "role": "admin"})
             return jsonify({"message": "Invalid credentials"}), 401
@@ -286,7 +289,8 @@ def register():
     db, cursor = safe_cursor()
     try:
         data = request.json
-        password_hash = generate_password_hash(data["password"])
+        password_hash = hashlib.sha256(data["password"].encode()).hexdigest()
+
         cursor.execute("""
             INSERT INTO CUSTOMER (name, phone, email, address, password_hash)
             VALUES (%s, %s, %s, %s, %s)
@@ -329,10 +333,12 @@ def set_driver_password():
         driver = cursor.fetchone()
         if not driver:
             return jsonify({"success": False, "message": "Invalid or expired token"}), 400
+
+        password_hash = hashlib.sha256(password.encode()).hexdigest()
         cursor.execute("""
             UPDATE DRIVER SET password_hash = %s, activation_token = NULL, status = 'Active'
             WHERE driver_id = %s
-        """, (generate_password_hash(password), driver["driver_id"]))
+        """, (password_hash, driver["driver_id"]))
         db.commit()
         return jsonify({"success": True, "message": "Account activated successfully", "driver_id": driver["driver_id"]}), 200
     except Exception as e:
@@ -541,8 +547,8 @@ def get_route_stops(route_id):
 @app.route("/add_stop_notes", methods=["POST"])
 def add_stop_notes():
     user = verify_token(request)
-    if not user or user["role"] != "driver":
-        return jsonify({"message": "Unauthorized"}), 401
+    #if not user or user["role"] != "driver":
+        #return jsonify({"message": "Unauthorized"}), 401
 
     data = request.json
     stop_id = data.get("stop_id")

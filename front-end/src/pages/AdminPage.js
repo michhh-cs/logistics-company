@@ -440,6 +440,22 @@ export default function AdminPage() {
         if (activeTab === "assignments") {
             fetchAvailableDrivers();
             fetchAvailableVehicles();
+
+            const refreshVehicles = async () => {
+                const token = localStorage.getItem("token");
+                try {
+                    const res = await fetch("http://127.0.0.1:5000/admin/vehicles", {
+                        headers: { "Authorization": `Bearer ${token}` }
+                    });
+                    const data = await res.json();
+                    console.log("Refreshed vehicles:", data);
+                    setVehicles(Array.isArray(data) ? data : []);
+                } catch (err) {
+                    console.error("Error refreshing vehicles:", err);
+                }
+            };
+            refreshVehicles();
+
         }
     }, [activeTab]);
 
